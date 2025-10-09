@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Dict
 
 from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtGui import QAction, QShowEvent
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -256,6 +257,7 @@ class DashboardWindow(QMainWindow):
         self._create_status_bar()
         self._connect_signals()
         self._apply_theme()
+        self._window_ready = False
 
     def _build_ui(self) -> None:
         central = QWidget(self)
@@ -272,14 +274,17 @@ class DashboardWindow(QMainWindow):
         menu_bar: QMenuBar = self.menuBar()
 
         file_menu = menu_bar.addMenu("&File")
-        self.reset_action = file_menu.addAction("Reset Form")
+        self.reset_action = QAction("Reset Form", self)
+        file_menu.addAction(self.reset_action)
         self.reset_action.setShortcut("Ctrl+R")
         file_menu.addSeparator()
-        self.exit_action = file_menu.addAction("Exit")
+        self.exit_action = QAction("Exit", self)
+        file_menu.addAction(self.exit_action)
         self.exit_action.setShortcut("Ctrl+Q")
 
         help_menu = menu_bar.addMenu("&Help")
-        self.about_action = help_menu.addAction("About")
+        self.about_action = QAction("About", self)
+        help_menu.addAction(self.about_action)
 
     def _create_status_bar(self) -> None:
         status = QStatusBar(self)
@@ -385,7 +390,14 @@ class DashboardWindow(QMainWindow):
         self.statusBar().showMessage("Form reset.", 3000)
 
     @Slot()
-    def _show_about_dialog(self) -> None:
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        self._window_ready = True
+
+    @Slot(bool)
+    def _show_about_dialog(self, checked: bool = False) -> None:
+        if not self._window_ready:
+            return
         QMessageBox.information(
             self,
             "About",
