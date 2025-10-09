@@ -1,17 +1,18 @@
-"""Interactive PySide6 GUI demonstrating common widgets and event handling.
+"""Customer interaction dashboard implemented with PySide6.
 
-This module defines a polished desktop application that showcases how to assemble
-many of the core components that make up a modern Qt-based interface. The
-window combines input widgets, menus, layouts, and styling so it can be used as
-an approachable starting point for PySide6 projects.
+The application demonstrates how common Qt widgets, layouts, and events can be
+combined to deliver a polished desktop experience. It is intentionally
+self-contained so it can act as a reference implementation when starting new
+projects.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Dict
 
 from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QAction, QShowEvent
+from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -35,11 +36,37 @@ from PySide6.QtWidgets import (
 )
 
 
-class FormPanel(QWidget):
-    """Collects user input and exposes submission/reset signals."""
+@dataclass(slots=True)
+class InteractionData:
+    """Container for the values captured by the form widget."""
+
+    name: str
+    email: str
+    category: str
+    contact_method: str
+    subscribe: bool
+    priority: int
+    notes: str
+
+    def to_display_text(self) -> str:
+        subscribe_text = "Yes" if self.subscribe else "No"
+        notes_text = self.notes or "(No additional notes provided.)"
+        return (
+            f"Name: {self.name}\n"
+            f"Email: {self.email}\n"
+            f"Category: {self.category}\n"
+            f"Preferred Contact: {self.contact_method}\n"
+            f"Priority: {self.priority} / 10\n"
+            f"Subscribed to Updates: {subscribe_text}\n\n"
+            f"Notes:\n{notes_text}"
+        )
+
+
+class InteractionForm(QWidget):
+    """Collects user input and communicates changes through Qt signals."""
 
     submitted: Signal = Signal(dict)
-    reset_requested: Signal = Signal()
+    cleared: Signal = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -47,10 +74,8 @@ class FormPanel(QWidget):
         self._connect_signals()
 
     def _build_ui(self) -> None:
-        self.setObjectName("FormPanel")
-
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("Enter the user's full name")
+        self.name_edit.setPlaceholderText("Full name")
 
         self.email_edit = QLineEdit()
         self.email_edit.setPlaceholderText("name@example.com")
@@ -65,9 +90,6 @@ class FormPanel(QWidget):
             ]
         )
 
-        self.subscribe_checkbox = QCheckBox("Subscribe to updates")
-        self.subscribe_checkbox.setChecked(True)
-
         self.email_radio = QRadioButton("Email")
         self.phone_radio = QRadioButton("Phone")
         self.chat_radio = QRadioButton("Live Chat")
@@ -77,6 +99,9 @@ class FormPanel(QWidget):
             self.contact_group.addButton(button)
         self.email_radio.setChecked(True)
 
+        self.subscribe_checkbox = QCheckBox("Subscribe to updates")
+        self.subscribe_checkbox.setChecked(True)
+
         self.priority_slider = QSlider(Qt.Horizontal)
         self.priority_slider.setRange(1, 10)
         self.priority_slider.setValue(5)
@@ -84,7 +109,7 @@ class FormPanel(QWidget):
         self.priority_value_label.setObjectName("PriorityValue")
 
         self.notes_edit = QPlainTextEdit()
-        self.notes_edit.setPlaceholderText("Add any additional notes or context here…")
+        self.notes_edit.setPlaceholderText("Add any additional context here…")
 
         self.submit_button = QPushButton("Submit Interaction")
         self.reset_button = QPushButton("Reset Form")
@@ -96,48 +121,38 @@ class FormPanel(QWidget):
 
         info_group = QGroupBox("User Information")
         info_layout = QGridLayout()
-        info_layout.setHorizontalSpacing(10)
-        info_layout.setVerticalSpacing(8)
         info_group.setLayout(info_layout)
-
         info_layout.addWidget(QLabel("Full Name"), 0, 0)
         info_layout.addWidget(self.name_edit, 0, 1)
-
         info_layout.addWidget(QLabel("Email"), 1, 0)
         info_layout.addWidget(self.email_edit, 1, 1)
-
         info_layout.addWidget(QLabel("Preferred Contact"), 2, 0)
         contact_row = QHBoxLayout()
         contact_row.addWidget(self.email_radio)
         contact_row.addWidget(self.phone_radio)
         contact_row.addWidget(self.chat_radio)
-        contact_row.addStretch()
+        contact_row.addStretch(1)
         info_layout.addLayout(contact_row, 2, 1)
 
         preferences_group = QGroupBox("Preferences")
         preferences_layout = QGridLayout()
-        preferences_layout.setHorizontalSpacing(10)
-        preferences_layout.setVerticalSpacing(8)
         preferences_group.setLayout(preferences_layout)
-
         preferences_layout.addWidget(QLabel("Category"), 0, 0)
         preferences_layout.addWidget(self.category_combo, 0, 1)
-
         preferences_layout.addWidget(self.subscribe_checkbox, 1, 0, 1, 2)
-
         preferences_layout.addWidget(QLabel("Priority"), 2, 0)
-        priority_layout = QHBoxLayout()
-        priority_layout.addWidget(self.priority_slider, stretch=1)
-        priority_layout.addWidget(self.priority_value_label)
-        preferences_layout.addLayout(priority_layout, 2, 1)
+        slider_row = QHBoxLayout()
+        slider_row.addWidget(self.priority_slider, stretch=1)
+        slider_row.addWidget(self.priority_value_label)
+        preferences_layout.addLayout(slider_row, 2, 1)
 
         notes_group = QGroupBox("Notes")
         notes_layout = QVBoxLayout()
-        notes_group.setLayout(notes_layout)
         notes_layout.addWidget(self.notes_edit)
+        notes_group.setLayout(notes_layout)
 
         button_row = QHBoxLayout()
-        button_row.addStretch()
+        button_row.addStretch(1)
         button_row.addWidget(self.reset_button)
         button_row.addWidget(self.submit_button)
 
@@ -147,19 +162,19 @@ class FormPanel(QWidget):
         main_layout.addLayout(button_row)
 
     def _connect_signals(self) -> None:
-        self.priority_slider.valueChanged.connect(self._on_priority_changed)
-        self.submit_button.clicked.connect(self._on_submit_clicked)
-        self.reset_button.clicked.connect(self._on_reset_clicked)
+        self.priority_slider.valueChanged.connect(self._update_priority_label)
+        self.submit_button.clicked.connect(self._handle_submit)
+        self.reset_button.clicked.connect(self._handle_reset)
 
     @Slot(int)
-    def _on_priority_changed(self, value: int) -> None:
+    def _update_priority_label(self, value: int) -> None:
         self.priority_value_label.setText(str(value))
 
     @Slot()
-    def _on_submit_clicked(self) -> None:
-        data = self._collect_form_data()
+    def _handle_submit(self) -> None:
+        data = self._collect_data()
         if not data["name"]:
-            self._show_validation_error("Please provide the contact's name.")
+            self._show_validation_error("Please provide a name before submitting.")
             return
         if not data["email"]:
             self._show_validation_error("Please provide an email address.")
@@ -167,19 +182,20 @@ class FormPanel(QWidget):
         self.submitted.emit(data)
 
     @Slot()
-    def _on_reset_clicked(self) -> None:
-        self.reset_requested.emit()
+    def _handle_reset(self) -> None:
+        self.clear()
+        self.cleared.emit()
 
-    def _collect_form_data(self) -> Dict[str, str | int | bool]:
-        selected_button = self.contact_group.checkedButton()
-        contact_method = selected_button.text() if selected_button else "Email"
+    def _collect_data(self) -> Dict[str, str | int | bool]:
+        checked_button = self.contact_group.checkedButton()
+        contact_method = checked_button.text() if checked_button else "Email"
         return {
             "name": self.name_edit.text().strip(),
             "email": self.email_edit.text().strip(),
             "category": self.category_combo.currentText(),
+            "contact_method": contact_method,
             "subscribe": self.subscribe_checkbox.isChecked(),
             "priority": self.priority_slider.value(),
-            "contact_method": contact_method,
             "notes": self.notes_edit.toPlainText().strip(),
         }
 
@@ -190,21 +206,21 @@ class FormPanel(QWidget):
         self.name_edit.clear()
         self.email_edit.clear()
         self.category_combo.setCurrentIndex(0)
+        self.email_radio.setChecked(True)
         self.subscribe_checkbox.setChecked(True)
         self.priority_slider.setValue(5)
         self.notes_edit.clear()
-        self.email_radio.setChecked(True)
         self.priority_value_label.setText(str(self.priority_slider.value()))
 
 
-class PreviewPanel(QWidget):
-    """Displays an at-a-glance summary of the collected data."""
+class SummaryPanel(QWidget):
+    """Displays a formatted representation of submitted data."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._intro_text = (
+        self._empty_text = (
             "Complete the form to preview a summary of the interaction. "
-            "Details will appear here once the submission succeeds."
+            "Submitted details appear here."
         )
         self._build_ui()
 
@@ -218,56 +234,42 @@ class PreviewPanel(QWidget):
 
         self.summary_display = QPlainTextEdit()
         self.summary_display.setReadOnly(True)
-        self.summary_display.setPlainText(self._intro_text)
+        self.summary_display.setPlainText(self._empty_text)
 
         layout.addWidget(self.title_label)
         layout.addWidget(self.summary_display)
 
-    def update_preview(self, data: Dict[str, str | int | bool]) -> None:
-        subscribe_text = "Yes" if data["subscribe"] else "No"
-        notes_section = data["notes"] or "(No additional notes provided.)"
-        summary = (
-            f"Name: {data['name']}\n"
-            f"Email: {data['email']}\n"
-            f"Category: {data['category']}\n"
-            f"Preferred Contact: {data['contact_method']}\n"
-            f"Priority: {data['priority']} / 10\n"
-            f"Subscribed to Updates: {subscribe_text}\n\n"
-            f"Notes:\n{notes_section}"
-        )
-        self.summary_display.setPlainText(summary)
+    def update_summary(self, data: InteractionData) -> None:
+        self.summary_display.setPlainText(data.to_display_text())
 
     def clear(self) -> None:
-        self.summary_display.setPlainText(self._intro_text)
+        self.summary_display.setPlainText(self._empty_text)
 
 
 class DashboardWindow(QMainWindow):
-    """Main application window combining the form and preview widgets."""
+    """Main window that hosts the form and summary panels."""
 
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Customer Interaction Dashboard")
         self.resize(960, 640)
 
-        self.form_panel = FormPanel()
-        self.preview_panel = PreviewPanel()
+        self.form_panel = InteractionForm()
+        self.summary_panel = SummaryPanel()
 
         self._build_ui()
         self._create_menus()
         self._create_status_bar()
         self._connect_signals()
-        self._apply_theme()
-        self._window_ready = False
+        self._apply_styles()
 
     def _build_ui(self) -> None:
         central = QWidget(self)
         layout = QHBoxLayout(central)
         layout.setContentsMargins(16, 20, 16, 20)
         layout.setSpacing(18)
-
         layout.addWidget(self.form_panel, stretch=3)
-        layout.addWidget(self.preview_panel, stretch=4)
-
+        layout.addWidget(self.summary_panel, stretch=4)
         self.setCentralWidget(central)
 
     def _create_menus(self) -> None:
@@ -275,12 +277,12 @@ class DashboardWindow(QMainWindow):
 
         file_menu = menu_bar.addMenu("&File")
         self.reset_action = QAction("Reset Form", self)
-        file_menu.addAction(self.reset_action)
         self.reset_action.setShortcut("Ctrl+R")
+        file_menu.addAction(self.reset_action)
         file_menu.addSeparator()
         self.exit_action = QAction("Exit", self)
-        file_menu.addAction(self.exit_action)
         self.exit_action.setShortcut("Ctrl+Q")
+        file_menu.addAction(self.exit_action)
 
         help_menu = menu_bar.addMenu("&Help")
         self.about_action = QAction("About", self)
@@ -293,13 +295,12 @@ class DashboardWindow(QMainWindow):
 
     def _connect_signals(self) -> None:
         self.form_panel.submitted.connect(self._handle_submission)
-        self.form_panel.reset_requested.connect(self._handle_form_reset)
-
-        self.reset_action.triggered.connect(self._clear_form_and_preview)
+        self.form_panel.cleared.connect(self._handle_cleared)
+        self.reset_action.triggered.connect(self._trigger_reset)
         self.exit_action.triggered.connect(self.close)
         self.about_action.triggered.connect(self._show_about_dialog)
 
-    def _apply_theme(self) -> None:
+    def _apply_styles(self) -> None:
         self.setStyleSheet(
             """
             QWidget {
@@ -376,41 +377,39 @@ class DashboardWindow(QMainWindow):
 
     @Slot(dict)
     def _handle_submission(self, data: Dict[str, str | int | bool]) -> None:
-        self.preview_panel.update_preview(data)
+        interaction = InteractionData(**data)
+        self.summary_panel.update_summary(interaction)
         self.statusBar().showMessage("Interaction submitted successfully.", 4000)
 
     @Slot()
-    def _handle_form_reset(self) -> None:
-        self._clear_form_and_preview()
-
-    @Slot()
-    def _clear_form_and_preview(self) -> None:
-        self.form_panel.clear()
-        self.preview_panel.clear()
+    def _handle_cleared(self) -> None:
+        self.summary_panel.clear()
         self.statusBar().showMessage("Form reset.", 3000)
 
     @Slot()
-    def showEvent(self, event: QShowEvent) -> None:
-        super().showEvent(event)
-        self._window_ready = True
+    def _trigger_reset(self) -> None:
+        self.form_panel.clear()
+        self.summary_panel.clear()
+        self.statusBar().showMessage("Form reset.", 3000)
 
-    @Slot(bool)
-    def _show_about_dialog(self, checked: bool = False) -> None:
-        if not self._window_ready:
-            return
+    @Slot()
+    def _show_about_dialog(self) -> None:
         QMessageBox.information(
             self,
             "About",
             (
-                "This sample dashboard demonstrates how to assemble a polished "
-                "PySide6 interface with responsive layouts, menu actions, and "
-                "event-driven updates."
+                "This dashboard showcases how to combine widgets, layouts, and "
+                "Qt signals in a PySide6 application."
             ),
         )
 
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.statusBar().showMessage("Closing application…", 1000)
+        super().closeEvent(event)
+
 
 def run() -> None:
-    """Entrypoint used by scripts or packaging systems."""
+    """Launch the dashboard."""
     app = QApplication([])
     window = DashboardWindow()
     window.show()
